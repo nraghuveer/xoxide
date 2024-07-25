@@ -8,16 +8,18 @@ const dbLib = @import("db.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    start(allocator, ".");
+    const exe_path = try std.fs.selfExePathAlloc(allocator);
+    defer allocator.free(exe_path);
+    try start(allocator, exe_path);
 }
 
 fn start(allocator: Allocator, curWorkingDir: []const u8) !void {
     std.debug.print("starting at cur working director: {s}\n", .{curWorkingDir});
-    const db = newDB(allocator);
+    const db = try newDB(allocator);
     defer db.deinit();
 }
 
 fn newDB(allocator: Allocator) !dbLib.DB {
-    const db = dbLib.InMemDB.init(allocator);
-    return db.Db();
+    var inmem_db = try dbLib.InMemDB.init(allocator);
+    return inmem_db.db();
 }
