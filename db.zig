@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing = std.testing;
 const Allocator = std.mem.Allocator;
 
 // TODO: not memory safe
@@ -22,8 +23,8 @@ pub const AccessEntry = struct {
 
 pub const DB = struct {
     ptr: *anyopaque,
-    putFn: *const fn (ptr: *anyopaque, path: []const u8) anyerror!DB.Error!void,
-    getAllFn: *const fn (ptr: *anyopaque) anyerror!DB.Error!std.hash_map.StringHashMap(*const AccessEntry).ValueIterator,
+    putFn: *const fn (ptr: *anyopaque, path: []const u8) anyerror!void,
+    getAllFn: *const fn (ptr: *anyopaque) anyerror!std.hash_map.StringHashMap(*const AccessEntry).ValueIterator,
     deinitFn: *const fn (ptr: *anyopaque) void,
 
     pub const Error = error{
@@ -34,11 +35,11 @@ pub const DB = struct {
         return self.deinitFn(self.ptr);
     }
 
-    fn put(self: DB, path: []const u8) !DB.Error!void {
+    fn put(self: DB, path: []const u8) !void {
         return self.putFn(self.ptr, path);
     }
 
-    fn getAll(self: DB) !DB.Error!std.hash_map.StringHashMap(*const AccessEntry).ValueIterator {
+    fn getAll(self: DB) !std.hash_map.StringHashMap(*const AccessEntry).ValueIterator {
         return self.getAllFn(self.ptr);
     }
 };
@@ -67,7 +68,7 @@ pub const InMemDB = struct {
         }
     }
 
-    fn put(ptr: *anyopaque, path: []const u8) anyerror!DB.Error!void {
+    fn put(ptr: *anyopaque, path: []const u8) anyerror!void {
         const self = castToSelf(ptr);
         // if there is already entry, just update the frequency
         if (self.hashmap.contains(path)) {
@@ -91,7 +92,7 @@ pub const InMemDB = struct {
         }
     }
 
-    fn getAll(ptr: *anyopaque) !DB.Error!std.hash_map.StringHashMap(*const AccessEntry).ValueIterator {
+    fn getAll(ptr: *anyopaque) !std.hash_map.StringHashMap(*const AccessEntry).ValueIterator {
         const self = castToSelf(ptr);
         return self.hashmap.valueIterator();
     }
@@ -105,3 +106,20 @@ pub const InMemDB = struct {
         };
     }
 };
+
+test "InMemDB simple put and get same" {
+    const allocator = std.testing.allocator;
+    var mem_db = try InMemDB.init(allocator);
+    var db: DB = mem_db.db();
+    defer db.deinit();
+
+    // put and then get
+    try db.put("/home/rnaraharisetti/Code");
+    var entries = try db.getAll();
+    var count: i32 = 0;
+    while (entries.next()) |entry| {
+        std.debug.print("{}\n", .{entry});
+        count += 1;
+    }
+    try testing.expectEqual(count, 1);
+}

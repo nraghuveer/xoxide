@@ -1,5 +1,4 @@
 // DB -> InMemory first and then sqlite
-
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const dbLib = @import("db.zig");
@@ -22,4 +21,8 @@ fn start(allocator: Allocator, curWorkingDir: []const u8) !void {
 fn newDB(allocator: Allocator) !dbLib.DB {
     var inmem_db = try dbLib.InMemDB.init(allocator);
     return inmem_db.db();
+}
+
+test "dummy x.zig test" {
+    try std.testing.expectEqual(1, 1);
 }
