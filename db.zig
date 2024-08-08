@@ -114,12 +114,14 @@ test "InMemDB simple put and get same" {
     defer db.deinit();
 
     // put and then get
-    try db.put("/home/rnaraharisetti/Code");
+    const PATH = "/home/rnaraharisetti/Code";
+    try db.put(PATH);
     var entries = try db.getAll();
     var count: i32 = 0;
     while (entries.next()) |entry| {
-        std.debug.print("{}\n", .{entry});
+        // std.debug.print("{s}", .{entry.*.*.path});
+        try testing.expectEqualStrings(PATH, entry.*.path);
         count += 1;
     }
-    try testing.expectEqual(count, 1);
+    try testing.expectEqual(1, count);
 }
