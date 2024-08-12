@@ -6,9 +6,9 @@ const utils = @import("utils.zig");
 
 pub const Search = struct {
     ptr: *anyopaque,
-    findFn: *const fn (ptr: *anyopaque, s: []const u8) anyerror!?[]u8,
+    findFn: *const fn (ptr: *anyopaque, s: []const u8) anyerror!?[]const u8,
 
-    pub fn find(self: Search, s: []const u8) !?[]u8 {
+    pub fn find(self: Search, s: []const u8) !?[]const u8 {
         return self.findFn(self.ptr, s);
     }
 };
@@ -31,11 +31,11 @@ pub const SimpleSearch = struct {
         };
     }
 
-    pub fn find(ptr: *anyopaque, s: []const u8) !?[]u8 {
+    pub fn find(ptr: *anyopaque, s: []const u8) !?[]const u8 {
         const self = utils.castToSelf(*SimpleSearch, ptr);
         var entries = try self.db.getAll();
         var winner_rank: ?f64 = null;
-        var winner: ?[]u8 = null;
+        var winner: ?[]const u8 = null;
         while (entries.next()) |entry| {
             const db_entry = entry.value_ptr.*;
             if (std.mem.indexOf(u8, db_entry.path, s) != null) {
@@ -52,6 +52,10 @@ pub const SimpleSearch = struct {
                 }
             }
         }
-        return winner;
+        if (winner) |w| {
+            return try self.allocator.dupe(u8, w);
+        } else {
+            return null;
+        }
     }
 };
