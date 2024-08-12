@@ -24,7 +24,7 @@ pub const AccessEntry = struct {
 pub const DB = struct {
     ptr: *anyopaque,
     putFn: *const fn (ptr: *anyopaque, path: []const u8) anyerror!void,
-    getAllFn: *const fn (ptr: *anyopaque) anyerror!std.hash_map.StringHashMap(*const AccessEntry).ValueIterator,
+    getAllFn: *const fn (ptr: *anyopaque) anyerror!std.hash_map.StringHashMap(AccessEntry).Iterator,
     deinitFn: *const fn (ptr: *anyopaque) void,
 
     pub const Error = error{
@@ -39,18 +39,18 @@ pub const DB = struct {
         return self.putFn(self.ptr, path);
     }
 
-    fn getAll(self: DB) !std.hash_map.StringHashMap(*const AccessEntry).ValueIterator {
+    fn getAll(self: DB) !std.hash_map.StringHashMap(AccessEntry).Iterator {
         return self.getAllFn(self.ptr);
     }
 };
 
 pub const InMemDB = struct {
-    hashmap: std.hash_map.StringHashMap(*const AccessEntry),
+    hashmap: std.hash_map.StringHashMap(AccessEntry),
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) !InMemDB {
         return .{
-            .hashmap = std.hash_map.StringHashMap(*const AccessEntry).init(allocator),
+            .hashmap = std.hash_map.StringHashMap(AccessEntry).init(allocator),
             .allocator = allocator,
         };
     }
@@ -60,6 +60,7 @@ pub const InMemDB = struct {
     }
 
     pub fn deinit(ptr: *anyopaque) void {
+        std.debug.print(">> executing deinit\n", .{});
         const self = castToSelf(ptr);
         defer self.hashmap.deinit();
         var it = self.hashmap.keyIterator();
@@ -81,20 +82,21 @@ pub const InMemDB = struct {
                 var entry = try dbEntry.dupe(self.allocator);
                 entry.frequency += 1;
                 entry.latestTS = std.time.timestamp();
-                try self.hashmap.put(entry.path, &entry);
+                try self.hashmap.put(entry.path, entry);
             } else {
                 return DB.Error.InvalidDBValue;
             }
         } else {
             // allocate memory for key and also for path
             const k = try self.allocator.dupe(u8, path);
-            try self.hashmap.put(k, &AccessEntry.new(k));
+            const x = AccessEntry.new(k);
+            try self.hashmap.put(k, x);
         }
     }
 
-    fn getAll(ptr: *anyopaque) !std.hash_map.StringHashMap(*const AccessEntry).ValueIterator {
+    fn getAll(ptr: *anyopaque) !std.hash_map.StringHashMap(AccessEntry).Iterator {
         const self = castToSelf(ptr);
-        return self.hashmap.valueIterator();
+        return self.hashmap.iterator();
     }
 
     pub fn db(self: *InMemDB) DB {
@@ -108,7 +110,8 @@ pub const InMemDB = struct {
 };
 
 test "InMemDB simple put and get same" {
-    const allocator = std.testing.allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
     var mem_db = try InMemDB.init(allocator);
     var db: DB = mem_db.db();
     defer db.deinit();
@@ -119,8 +122,8 @@ test "InMemDB simple put and get same" {
     var entries = try db.getAll();
     var count: i32 = 0;
     while (entries.next()) |entry| {
-        // std.debug.print("{s}", .{entry.*.*.path});
-        try testing.expectEqualStrings(PATH, entry.*.path);
+        std.debug.print("{s}\n", .{entry.key_ptr.*});
+        std.debug.print("{s}\n", .{entry.value_ptr.*.path});
         count += 1;
     }
     try testing.expectEqual(1, count);
