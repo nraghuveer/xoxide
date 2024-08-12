@@ -1,6 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
+const utils = @import("utils.zig");
 
 // TODO: not memory safe
 pub const AccessEntry = struct {
@@ -27,19 +28,15 @@ pub const DB = struct {
     getAllFn: *const fn (ptr: *anyopaque) anyerror!std.hash_map.StringHashMap(AccessEntry).Iterator,
     deinitFn: *const fn (ptr: *anyopaque) void,
 
-    pub const Error = error{
-        InvalidDBValue,
-    };
-
     pub fn deinit(self: DB) void {
         return self.deinitFn(self.ptr);
     }
 
-    fn put(self: DB, path: []const u8) !void {
+    pub fn put(self: DB, path: []const u8) !void {
         return self.putFn(self.ptr, path);
     }
 
-    fn getAll(self: DB) !std.hash_map.StringHashMap(AccessEntry).Iterator {
+    pub fn getAll(self: DB) !std.hash_map.StringHashMap(AccessEntry).Iterator {
         return self.getAllFn(self.ptr);
     }
 };
@@ -55,13 +52,8 @@ pub const InMemDB = struct {
         };
     }
 
-    fn castToSelf(ptr: *anyopaque) *InMemDB {
-        return @ptrCast(@alignCast(ptr));
-    }
-
     pub fn deinit(ptr: *anyopaque) void {
-        std.debug.print(">> executing deinit\n", .{});
-        const self = castToSelf(ptr);
+        const self = utils.castToSelf(*InMemDB, ptr);
         defer self.hashmap.deinit();
         var it = self.hashmap.keyIterator();
         while (it.next()) |kv| {
@@ -70,21 +62,14 @@ pub const InMemDB = struct {
     }
 
     fn put(ptr: *anyopaque, path: []const u8) anyerror!void {
-        const self = castToSelf(ptr);
+        const self = utils.castToSelf(*InMemDB, ptr);
         // if there is already entry, just update the frequency
         if (self.hashmap.contains(path)) {
-            if (self.hashmap.fetchRemove(path)) |kv| {
-                // this is const copy, make a new one
-                const dbEntry = kv.value;
-                // question: where does the accessentry item is stored in memory?
-                defer self.allocator.free(kv.key);
-
-                var entry = try dbEntry.dupe(self.allocator);
-                entry.frequency += 1;
-                entry.latestTS = std.time.timestamp();
-                try self.hashmap.put(entry.path, entry);
+            if (self.hashmap.getPtr(path)) |e| {
+                e.*.frequency += 1;
+                e.*.latestTS = std.time.timestamp();
             } else {
-                return DB.Error.InvalidDBValue;
+                unreachable;
             }
         } else {
             // allocate memory for key and also for path
@@ -95,7 +80,7 @@ pub const InMemDB = struct {
     }
 
     fn getAll(ptr: *anyopaque) !std.hash_map.StringHashMap(AccessEntry).Iterator {
-        const self = castToSelf(ptr);
+        const self = utils.castToSelf(*InMemDB, ptr);
         return self.hashmap.iterator();
     }
 
@@ -110,8 +95,9 @@ pub const InMemDB = struct {
 };
 
 test "InMemDB simple put and get same" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // const allocator = gpa.allocator();
+    const allocator = std.testing.allocator;
     var mem_db = try InMemDB.init(allocator);
     var db: DB = mem_db.db();
     defer db.deinit();
@@ -122,8 +108,29 @@ test "InMemDB simple put and get same" {
     var entries = try db.getAll();
     var count: i32 = 0;
     while (entries.next()) |entry| {
-        std.debug.print("{s}\n", .{entry.key_ptr.*});
-        std.debug.print("{s}\n", .{entry.value_ptr.*.path});
+        const db_entry = entry.value_ptr.*;
+        try testing.expectEqual(1, db_entry.frequency);
+        try testing.expect(db_entry.latestTS <= std.time.timestamp());
+        count += 1;
+    }
+    try testing.expectEqual(1, count);
+}
+
+test "InMemDB put on existing" {
+    const allocator = std.testing.allocator;
+    var mem_db = try InMemDB.init(allocator);
+    var db: DB = mem_db.db();
+    defer db.deinit();
+
+    const PATH = "/home/rnaraharisetti/Code";
+    try db.put(PATH);
+    try db.put(PATH);
+    var entries = try db.getAll();
+    var count: i32 = 0;
+    while (entries.next()) |entry| {
+        const db_entry = entry.value_ptr.*;
+        try testing.expectEqual(2, db_entry.frequency);
+        try testing.expect(db_entry.latestTS <= std.time.timestamp());
         count += 1;
     }
     try testing.expectEqual(1, count);

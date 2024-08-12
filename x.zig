@@ -2,6 +2,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const dbLib = @import("db.zig");
+const searchLib = @import("search.zig");
 
 // TODO: cli args
 pub fn main() !void {
@@ -14,13 +15,28 @@ pub fn main() !void {
 
 fn start(allocator: Allocator, curWorkingDir: []const u8) !void {
     std.debug.print("starting at cur working director: {s}\n", .{curWorkingDir});
-    const db = try newDB(allocator);
+    var db = try newDB(allocator);
     defer db.deinit();
+
+    const PATH = "/home/rnaraharisetti/Code";
+    try db.put(PATH);
+
+    var search = try newSearch(allocator, db);
+    if (try search.find("setti")) |r| {
+        std.debug.print("result is {s}", .{r});
+    } else {
+        std.debug.print("not found", .{});
+    }
 }
 
 fn newDB(allocator: Allocator) !dbLib.DB {
     var inmem_db = try dbLib.InMemDB.init(allocator);
     return inmem_db.db();
+}
+
+fn newSearch(allocator: Allocator, db: dbLib.DB) !searchLib.Search {
+    var simple_search = try searchLib.SimpleSearch.init(allocator, db);
+    return try simple_search.search();
 }
 
 test "dummy x.zig test" {
